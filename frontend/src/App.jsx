@@ -35,6 +35,8 @@ function App() {
     scrollToBottom();
   }, [messages, isLoading, currentView]);
 
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     if (!inputMessage.trim()) return;
@@ -45,7 +47,7 @@ function App() {
     setIsLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:8000/chat', {
+      const response = await axios.post(`${API_BASE_URL}/chat`, {
         message: userMessage.content,
         history: messages.map(msg => ({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: msg.content }))
       });
@@ -58,15 +60,16 @@ function App() {
       setPlaceholderText(placeholders[randomIdx]);
     } catch (error) {
       console.error("Error connecting to backend:", error);
-      setMessages(prev => [...prev, { role: 'assistant', content: '❌ Erro de conexão com o servidor. Por favor, verifique se a API local está rodando.' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `❌ Erro de conexão com o servidor (${API_BASE_URL}). Por favor, verifique se a API local está rodando e acessível.` }]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const renderMessageContent = (content) => {
-    // Basic detection for local video downloads
-    const downloadRegex = /http:\/\/localhost:8000\/downloads\/([^\s]+)\.mp4/g;
+    // Basic detection for local video downloads dynamically matching the API_BASE_URL
+    const escapedBaseUrl = API_BASE_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const downloadRegex = new RegExp(`${escapedBaseUrl}/downloads/([^\\s]+)\\.mp4`, 'g');
     // Detection for Pollinations images
     const imgRegex = /(https:\/\/image\.pollinations\.ai\/prompt\/[^\s]+)/g;
 

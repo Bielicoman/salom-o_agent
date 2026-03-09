@@ -13,6 +13,8 @@ load_dotenv()
 app = FastAPI(title="Salomão AI API", version="6.8")
 
 # Configure CORS for the frontend to connect
+from fastapi.staticfiles import StaticFiles
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Adjust this in production
@@ -20,6 +22,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Ensure downloads directory exists
+downloads_dir = os.path.join(os.path.dirname(__file__), "..", "downloads")
+os.makedirs(downloads_dir, exist_ok=True)
+
+# Serve the downloads directory statically
+app.mount("/downloads", StaticFiles(directory=downloads_dir), name="downloads")
 
 class Message(BaseModel):
     role: str

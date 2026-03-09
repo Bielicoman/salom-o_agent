@@ -2,29 +2,37 @@ from langchain_core.tools import tool
 import os
 
 @tool
-def download_youtube_audio(url: str) -> str:
-    """Useful when you need to download a YouTube video or extract audio. Returns the local file path."""
+def download_youtube_video(url: str) -> str:
+    """Useful when you need to download a YouTube video. Returns the download URL path for the frontend."""
     import yt_dlp
-    output_path = os.path.join(os.path.dirname(__file__), "..", "downloads", "%(title)s.%(ext)s")
+    import urllib.parse
+    
+    downloads_dir = os.path.join(os.path.dirname(__file__), "..", "downloads")
+    os.makedirs(downloads_dir, exist_ok=True)
+    
+    output_path = os.path.join(downloads_dir, "%(title)s.%(ext)s")
     
     ydl_opts = {
-        'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': output_path,
-        'quiet': True
+        'quiet': True,
+        'merge_output_format': 'mp4'
     }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
+            # yt-dlp might change the extension during merge
             base, _ = os.path.splitext(filename)
-            mp3_file = f"{base}.mp3"
-            return f"Áudio salvo com sucesso em: {mp3_file}"
+            final_file = f"{base}.mp4"
+            
+            # Create a URL path that the frontend can use
+            file_basename = os.path.basename(final_file)
+            encoded_name = urllib.parse.quote(file_basename)
+            download_url = f"http://localhost:8000/downloads/{encoded_name}"
+            
+            return f"Vídeo baixado com sucesso! Aqui está o link para download: {download_url}"
     except Exception as e:
         return f"Erro ao baixar: {str(e)}"
 

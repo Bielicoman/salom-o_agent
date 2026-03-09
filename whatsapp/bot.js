@@ -75,8 +75,41 @@ client.on('message', async msg => {
             chatHistories[msg.from] = currentHistory.slice(-20);
         }
 
-        // Reply to the user
+        // Check if there are generated Media Links to send
+        const { MessageMedia } = require('whatsapp-web.js');
+
+        // Regex for local downloads
+        const downloadRegex = /http:\/\/localhost:8000\/downloads\/([^\s]+)/;
+        const downloadMatch = replyText.match(downloadRegex);
+
+        // Regex for pollination images
+        const pollinationRegex = /(https:\/\/image\.pollinations\.ai\/prompt\/[^\s]+)/;
+        const pollinationMatch = replyText.match(pollinationRegex);
+
         await msg.reply(replyText);
+
+        if (downloadMatch) {
+            const fileName = decodeURIComponent(downloadMatch[1]);
+            const filePath = require('path').join(__dirname, '..', 'downloads', fileName);
+            if (fs.existsSync(filePath)) {
+                try {
+                    const media = MessageMedia.fromFilePath(filePath);
+                    console.log(`[Enviando Mídia] ${fileName}`);
+                    await client.sendMessage(msg.from, media, { caption: "Aqui está o arquivo solicitado por você:" });
+                } catch (e) {
+                    console.log(`Erro ao enviar arquivo físico via Whatsapp:`, e);
+                }
+            }
+        } else if (pollinationMatch) {
+            try {
+                const imgUrl = pollinationMatch[1];
+                console.log(`[Enviando Imagem Pollinations] ${imgUrl}`);
+                const media = await MessageMedia.fromUrl(imgUrl);
+                await client.sendMessage(msg.from, media, { caption: "A imagem que você pediu foi gerada:" });
+            } catch (e) {
+                console.log(`Erro ao baixar e enviar imagem via Whatsapp:`, e);
+            }
+        }
     } catch (error) {
         console.error('Erro na comunicação com a API (Python Backend):', error.message);
         await msg.reply("❌ Perdoe-me. Meu núcleo central (API Local) encontra-se desligado no momento. Por favor, inicialize o servidor backend.");

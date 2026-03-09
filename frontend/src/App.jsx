@@ -64,6 +64,61 @@ function App() {
     }
   };
 
+  const renderMessageContent = (content) => {
+    // Basic detection for local video downloads
+    const downloadRegex = /http:\/\/localhost:8000\/downloads\/([^\s]+)\.mp4/g;
+    // Detection for Pollinations images
+    const imgRegex = /(https:\/\/image\.pollinations\.ai\/prompt\/[^\s]+)/g;
+
+    let parts = [];
+    let lastIndex = 0;
+
+    // First handle video
+    let match;
+    while ((match = downloadRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index));
+      }
+      parts.push(
+        <div key={`video-${match.index}`} style={{ marginTop: '10px' }}>
+          <video controls style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <source src={match[0]} type="video/mp4" />
+            Seu navegador não suporta o formato de vídeo.
+          </video>
+          <div style={{ marginTop: '8px' }}>
+            <a href={match[0]} download className="btn-primary" style={{ textDecoration: 'none', display: 'inline-block', fontSize: '14px', padding: '6px 12px' }}>Baixar Vídeo</a>
+          </div>
+        </div>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Now handle possible images on the remaining text
+    let remainingContent = content.slice(lastIndex);
+    let imgParts = [];
+    let imgLastIndex = 0;
+
+    let imgMatch;
+    while ((imgMatch = imgRegex.exec(remainingContent)) !== null) {
+      if (imgMatch.index > imgLastIndex) {
+        imgParts.push(remainingContent.slice(imgLastIndex, imgMatch.index));
+      }
+      imgParts.push(
+        <div key={`img-${imgMatch.index}`} style={{ marginTop: '10px' }}>
+          <img src={imgMatch[0]} alt="Imagem Gerada IA" style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }} />
+          <div style={{ marginTop: '8px' }}>
+            <a href={imgMatch[0]} target="_blank" rel="noreferrer" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-block', fontSize: '14px', padding: '6px 12px' }}>Abrir Imagem Original</a>
+          </div>
+        </div>
+      );
+      imgLastIndex = imgMatch.index + imgMatch[0].length;
+    }
+    imgParts.push(remainingContent.slice(imgLastIndex));
+
+    parts = parts.concat(imgParts);
+    return parts;
+  };
+
   const renderContent = () => {
     if (currentView === 'chat') {
       return (
@@ -75,7 +130,7 @@ function App() {
                   {msg.role === 'assistant' ? <img src="/logo.png" alt="Salomão" style={{ width: '100%', height: '100%', borderRadius: '12px', objectFit: 'cover' }} /> : <span style={{ color: 'white', fontWeight: 'bold' }}>U</span>}
                 </div>
                 <div className="message-content" style={{ whiteSpace: 'pre-wrap' }}>
-                  {msg.content}
+                  {renderMessageContent(msg.content)}
                 </div>
               </div>
             ))}

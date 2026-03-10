@@ -10,8 +10,14 @@ import axios from 'axios';
 
 function Avatar({ src, alt, fallbackIcon: FallbackIcon }) {
   const [error, setError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
-  // Se houver erro ou não houver src, mostra o fallback
+  // Reset state if src changes
+  useEffect(() => {
+    setError(false);
+    setLoaded(false);
+  }, [src]);
+
   if (error || !src) {
     return (
       <div className="avatar-fallback" style={{
@@ -24,21 +30,38 @@ function Avatar({ src, alt, fallbackIcon: FallbackIcon }) {
         color: 'var(--cyan-primary)',
         borderRadius: 'inherit'
       }}>
-        {FallbackIcon ? <FallbackIcon size={20} /> : 'S'}
+        {FallbackIcon ? <FallbackIcon size={20} /> : <Crown size={20} />}
       </div>
     );
   }
 
   return (
-    <img
-      src={src}
-      alt={alt}
-      onError={(e) => {
-        console.error("Erro ao carregar imagem:", src);
-        setError(true);
-      }}
-      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-    />
+    <div style={{ width: '100%', height: '100%', position: 'relative', borderRadius: 'inherit', overflow: 'hidden' }}>
+      {!loaded && !error && (
+        <div className="avatar-loading" style={{
+          position: 'absolute', inset: 0,
+          background: 'var(--bg-card)',
+          animation: 'pulse 1.5s infinite'
+        }} />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        onError={(e) => {
+          console.error("Erro ao carregar imagem:", src);
+          setError(true);
+        }}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          display: 'block',
+          opacity: loaded ? 1 : 0,
+          transition: 'opacity 0.3s ease'
+        }}
+      />
+    </div>
   );
 }
 
@@ -276,15 +299,17 @@ export default function App() {
     }
   }, [messages, isLoading, settings.autoScroll]);
 
-  // Auto-resize textarea
-  const handleInputChange = (e) => {
-    setInput(e.target.value);
-    const ta = textareaRef.current;
-    if (ta) {
-      ta.style.height = 'auto';
-      ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+  // Optimized input handling
+  const handleInputChange = useCallback((e) => {
+    const val = e.target.value;
+    setInput(val);
+
+    // Auto-resize logic
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 160) + 'px';
     }
-  };
+  }, []);
 
   const showToast = (msg, icon = '✓') => {
     setToast({ msg, icon });
@@ -437,7 +462,7 @@ export default function App() {
         <div className="chat-messages">
           {isEmpty ? (
             <div className="empty-state">
-              <img src="/logo.png" alt="Salomão" className="empty-logo" />
+              <Avatar src="/logo.png" alt="Salomão" fallbackIcon={Crown} />
               <h1 className="empty-title">Como posso servi-lo?</h1>
               <p className="empty-sub">
                 Sou Salomão, seu assistente de IA real. Domino artes de Engenharia de Imagem,
@@ -458,7 +483,7 @@ export default function App() {
                   <div className="avatar">
                     {msg.role === 'assistant'
                       ? <Avatar src="/logo.png" alt="Salomão" fallbackIcon={Crown} />
-                      : <div className="user-avatar-initial">U</div>
+                      : <div className="user-avatar-fallback">U</div>
                     }
                   </div>
                   <div className="message-body">
@@ -531,7 +556,7 @@ export default function App() {
             Salomão v6.8 — Groq + LangChain · Respostas geradas por IA
           </div>
         </div>
-      </div>
+      </div >
     );
   };
 

@@ -10,12 +10,36 @@ import axios from 'axios';
 
 function Avatar({ src, alt, fallbackIcon: FallbackIcon }) {
   const [error, setError] = useState(false);
-  if (error || !src) return (
-    <div className="avatar-fallback" style={{ background: 'var(--cyan-glow)' }}>
-      {FallbackIcon ? <FallbackIcon size={20} color="var(--cyan-primary)" /> : 'S'}
-    </div>
+
+  // Se houver erro ou não houver src, mostra o fallback
+  if (error || !src) {
+    return (
+      <div className="avatar-fallback" style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--cyan-glow)',
+        color: 'var(--cyan-primary)',
+        borderRadius: 'inherit'
+      }}>
+        {FallbackIcon ? <FallbackIcon size={20} /> : 'S'}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={(e) => {
+        console.error("Erro ao carregar imagem:", src);
+        setError(true);
+      }}
+      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+    />
   );
-  return <img src={src} alt={alt} onError={() => setError(true)} />;
 }
 
 // ─── Markdown-like renderer ───────────────────────────────

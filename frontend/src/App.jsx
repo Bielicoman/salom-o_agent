@@ -8,6 +8,16 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 
+function Avatar({ src, alt, fallbackIcon: FallbackIcon }) {
+  const [error, setError] = useState(false);
+  if (error || !src) return (
+    <div className="avatar-fallback" style={{ background: 'var(--cyan-glow)' }}>
+      {FallbackIcon ? <FallbackIcon size={20} color="var(--cyan-primary)" /> : 'S'}
+    </div>
+  );
+  return <img src={src} alt={alt} onError={() => setError(true)} />;
+}
+
 // ─── Markdown-like renderer ───────────────────────────────
 function renderMD(text) {
   if (!text || typeof text !== 'string') return text;
@@ -128,7 +138,7 @@ function MessageContent({ content, apiBase }) {
                 <source src={seg.url} type="video/mp4" />
               </video>
               <div className="media-block-action">
-                <a href={seg.url} download className="btn-link-gold">⬇ Baixar Vídeo</a>
+                <a href={seg.url} download className="btn-link-gold" style={{ color: 'var(--cyan-primary)' }}>⬇ Baixar Vídeo</a>
               </div>
             </div>
           );
@@ -138,7 +148,7 @@ function MessageContent({ content, apiBase }) {
             <div key={i} className="media-block">
               <img src={seg.url} alt="Imagem Gerada" />
               <div className="media-block-action">
-                <a href={seg.url} target="_blank" rel="noreferrer" className="btn-link-gold">↗ Abrir Original</a>
+                <a href={seg.url} target="_blank" rel="noreferrer" className="btn-link-gold" style={{ color: 'var(--cyan-primary)' }}>↗ Abrir Original</a>
               </div>
             </div>
           );
@@ -225,6 +235,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [settings, setSettings] = useState(loadSettings);
   const [toast, setToast] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -254,6 +265,16 @@ export default function App() {
   const showToast = (msg, icon = '✓') => {
     setToast({ msg, icon });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleTestConnection = async (url) => {
+    try {
+      showToast('Testando conexão...', '⌛');
+      await axios.get(`${url}/health`); // Assuming a health endpoint
+      showToast('Conexão estabelecida!', '🟢');
+    } catch (e) {
+      showToast('Erro de conexão!', '🔴');
+    }
   };
 
   // Send message
@@ -317,50 +338,53 @@ export default function App() {
 
   // ─── Sidebar ──────────────────────────────────────────
   const Sidebar = () => (
-    <aside className="sidebar">
-      {/* Logo */}
-      <div className="logo-area">
-        <div className="logo-img-wrap">
-          <div className="logo-ring" />
-          <img src="/logo.png" alt="Salomão" />
+    <>
+      <div className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`} onClick={() => setSidebarOpen(false)} />
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        {/* Logo */}
+        <div className="logo-area">
+          <div className="logo-img-wrap">
+            <div className="logo-ring" />
+            <Avatar src="/logo.png" alt="Salomão" fallbackIcon={Crown} />
+          </div>
+          <div className="logo-text">
+            <div className="logo-title">SALOMÃO</div>
+            <div className="logo-subtitle">O Sábio · v6.8</div>
+          </div>
         </div>
-        <div className="logo-text">
-          <div className="logo-title">SALOMÃO</div>
-          <div className="logo-subtitle">O Sábio · v6.8</div>
-        </div>
-      </div>
 
-      {/* New Chat */}
-      <button className="btn-new-chat" onClick={handleNewChat}>
-        <Plus size={15} />
-        Nova Conversa
-      </button>
-
-      {/* Navigation */}
-      <nav className="nav-section">
-        <div className="nav-section-label">Módulos</div>
-        {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            className={`nav-item ${view === id ? 'active' : ''}`}
-            onClick={() => setView(id)}
-          >
-            <span className="nav-icon"><Icon size={17} /></span>
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      {/* Bottom */}
-      <div className="sidebar-bottom">
-        <button className="theme-toggle" onClick={toggleTheme}>
-          <span className="theme-toggle-icon">
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-          </span>
-          {theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+        {/* New Chat */}
+        <button className="btn-new-chat" onClick={() => { handleNewChat(); setSidebarOpen(false); }}>
+          <Plus size={15} />
+          Nova Conversa
         </button>
-      </div>
-    </aside>
+
+        {/* Navigation */}
+        <nav className="nav-section">
+          <div className="nav-section-label">Módulos</div>
+          {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              className={`nav-item ${view === id ? 'active' : ''}`}
+              onClick={() => { setView(id); setSidebarOpen(false); }}
+            >
+              <span className="nav-icon"><Icon size={17} /></span>
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Bottom */}
+        <div className="sidebar-bottom">
+          <button className="theme-toggle" onClick={toggleTheme}>
+            <span className="theme-toggle-icon">
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            </span>
+            {theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+          </button>
+        </div>
+      </aside>
+    </>
   );
 
   // ─── Chat View ──────────────────────────────────────
@@ -370,6 +394,10 @@ export default function App() {
 
     return (
       <div className="chat-view">
+        <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>
+          <Plus size={24} style={{ transform: 'rotate(45deg)' }} />
+        </button>
+
         {/* Header */}
         <div className="chat-header">
           <div className="chat-header-icon">
@@ -405,8 +433,8 @@ export default function App() {
                 <div key={idx} className={`message ${msg.role}`}>
                   <div className="avatar">
                     {msg.role === 'assistant'
-                      ? <img src="/logo.png" alt="Salomão" />
-                      : <span className="user-avatar-initial">U</span>
+                      ? <Avatar src="/logo.png" alt="Salomão" fallbackIcon={Crown} />
+                      : <div className="user-avatar-initial">U</div>
                     }
                   </div>
                   <div className="message-body">
@@ -426,7 +454,7 @@ export default function App() {
               {isLoading && (
                 <div className="message assistant">
                   <div className="avatar">
-                    <img src="/logo.png" alt="Salomão" />
+                    <Avatar src="/logo.png" alt="Salomão" fallbackIcon={Crown} />
                   </div>
                   <div className="message-body">
                     <div className="message-content">
@@ -447,8 +475,13 @@ export default function App() {
         {/* Input */}
         <div className="input-area">
           <div className="input-form">
-            <button className="input-btn input-btn-ghost" type="button" title="Anexar arquivo">
+            <button className="input-btn input-btn-ghost" type="button"
+              onClick={() => showToast('Módulo de anexo virá em breve!', '📋')} title="Anexar arquivo">
               <Plus size={18} />
+            </button>
+            <button className="input-btn input-btn-ghost" type="button"
+              onClick={() => showToast('Módulo de Voz virá em breve!', '🎙️')} title="Voz (Beta)">
+              <Mic size={18} />
             </button>
             <textarea
               ref={textareaRef}
@@ -523,7 +556,7 @@ export default function App() {
               <p className="form-hint">
                 Sua chave Groq pessoal para uso ilimitado. Obtenha em{' '}
                 <a href="https://console.groq.com" target="_blank" rel="noreferrer"
-                  style={{ color: 'var(--gold-primary)' }}>console.groq.com</a>.
+                  style={{ color: 'var(--cyan-primary)' }}>console.groq.com</a>.
                 Se deixar vazio, será usada a chave padrão do servidor.
               </p>
             </div>
@@ -542,12 +575,17 @@ export default function App() {
               </p>
             </div>
 
+            <button className="chip" style={{ width: 'fit-content', marginTop: 8 }}
+              onClick={() => handleTestConnection(local.backendUrl)}>
+              🔍 Testar Conexão
+            </button>
+
             {/* Connection test indicator */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 0' }}>
               <div style={{
                 width: 8, height: 8, borderRadius: '50%',
-                background: local.backendUrl ? 'var(--gold-primary)' : '#555',
-                boxShadow: local.backendUrl ? '0 0 8px var(--gold-glow)' : 'none'
+                background: local.backendUrl ? 'var(--cyan-primary)' : '#555',
+                boxShadow: local.backendUrl ? '0 0 8px var(--cyan-glow)' : 'none'
               }} />
               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 {local.backendUrl ? `Configurado: ${local.backendUrl}` : 'Nenhum backend configurado'}
@@ -643,7 +681,7 @@ export default function App() {
   const ComingSoon = ({ title, desc, icon: Icon, color }) => (
     <div className="coming-soon-view">
       <div className="coming-soon-icon" style={{ '--icon-color': color }}>
-        <Icon size={36} color="var(--gold-primary)" />
+        <Icon size={36} color="var(--cyan-primary)" />
       </div>
       <h2 className="coming-soon-title">{title}</h2>
       <p className="coming-soon-desc">{desc}</p>

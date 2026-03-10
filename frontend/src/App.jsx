@@ -39,7 +39,7 @@ function renderMD(text) {
     // Heading ## or ###
     if (line.startsWith('### ')) {
       result.push(
-        <p key={i} style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '6px', color: 'var(--gold-primary)' }}>
+        <p key={i} style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '6px', color: 'var(--cyan-primary)' }}>
           {inlineFormatLine(line.slice(4))}
         </p>
       );
@@ -47,7 +47,7 @@ function renderMD(text) {
     }
     if (line.startsWith('## ')) {
       result.push(
-        <p key={i} style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '8px', color: 'var(--gold-light)' }}>
+        <p key={i} style={{ fontWeight: 800, fontSize: '1.2rem', marginBottom: '8px', color: 'var(--cyan-light)' }}>
           {inlineFormatLine(line.slice(3))}
         </p>
       );
@@ -58,7 +58,7 @@ function renderMD(text) {
     if (line.startsWith('- ') || line.startsWith('* ')) {
       result.push(
         <p key={i} style={{ paddingLeft: '16px', position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 0, color: 'var(--gold-dim)' }}>•</span>
+          <span style={{ position: 'absolute', left: 0, color: 'var(--cyan-dim)' }}>•</span>
           {inlineFormatLine(line.slice(2))}
         </p>
       );
@@ -84,7 +84,7 @@ function inlineFormatLine(text) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   return parts.map((p, idx) => {
     if (p.startsWith('**') && p.endsWith('**'))
-      return <strong key={idx}>{p.slice(2, -2)}</strong>;
+      return <strong key={idx} style={{ color: 'var(--cyan-light)', fontWeight: 700 }}>{p.slice(2, -2)}</strong>;
     if (p.startsWith('`') && p.endsWith('`'))
       return <code key={idx} className="msg-inline-code">{p.slice(1, -1)}</code>;
     return p;
@@ -155,12 +155,12 @@ function MessageContent({ content, apiBase }) {
 
 // ─── Suggestions ──────────────────────────────────────────
 const SUGGESTIONS = [
-  { icon: '👑', text: 'Qual a sabedoria de Provérbios para hoje?' },
-  { icon: '🎨', text: 'Crie uma LUT cinematográfica para tons dourados' },
-  { icon: '💻', text: 'Construa um componente React moderno' },
-  { icon: '📖', text: 'Explique a história do Rei Salomão' },
-  { icon: '🖼', text: 'Gere uma imagem de um templo dourado majestoso' },
-  { icon: '⚡', text: 'Como posso otimizar meu workflow de vídeo?' },
+  { icon: '💎', text: 'Qual a sabedoria de Provérbios para hoje?' },
+  { icon: '💠', text: 'Crie uma LUT cinematográfica de azul profundo' },
+  { icon: '🚀', text: 'Construa um componente React moderno e limpo' },
+  { icon: '📘', text: 'Explique a história do Rei Salomão' },
+  { icon: '🌌', text: 'Gere uma imagem de um castelo azul celestial' },
+  { icon: '⚡', text: 'Como otimizar meu workflow com IA azul?' },
 ];
 
 // ─── Nav items ────────────────────────────────────────────
@@ -566,20 +566,20 @@ export default function App() {
                 onClick={() => setTheme('dark')}
               >
                 <div className="theme-card-preview dark-preview">
-                  <div className="preview-dot" style={{ background: '#C9A84C' }} />
-                  <div className="preview-dot" style={{ background: '#1C3D5E' }} />
-                  <div className="preview-dot" style={{ background: '#243B55' }} />
+                  <div className="preview-dot" style={{ background: '#00A7E1' }} />
+                  <div className="preview-dot" style={{ background: '#004E92' }} />
+                  <div className="preview-dot" style={{ background: '#060912' }} />
                 </div>
-                <div className="theme-card-name">⚫ Modo Escuro</div>
+                <div className="theme-card-name">🔵 Modo Escuro</div>
               </div>
               <div
                 className={`theme-card ${theme === 'light' ? 'selected' : ''}`}
                 onClick={() => setTheme('light')}
               >
                 <div className="theme-card-preview light-preview">
-                  <div className="preview-dot" style={{ background: '#8A6420' }} />
-                  <div className="preview-dot" style={{ background: '#1C3D5E' }} />
-                  <div className="preview-dot" style={{ background: '#C9A84C' }} />
+                  <div className="preview-dot" style={{ background: '#004E92' }} />
+                  <div className="preview-dot" style={{ background: '#00A7E1' }} />
+                  <div className="preview-dot" style={{ background: '#FFFFFF' }} />
                 </div>
                 <div className="theme-card-name">⚪ Modo Claro</div>
               </div>

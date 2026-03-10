@@ -1,242 +1,711 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image, Mic, Settings, MessageSquare, Terminal, Database, Play } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  Send, MessageSquare, Image, Terminal, Database,
+  Settings, Sun, Moon, Plus, Copy, Check,
+  Eye, EyeOff, Crown, Sparkles, Mic, MicOff,
+  Globe, Key, Sliders, Palette, BookOpen, Zap,
+  ChevronRight, AlertCircle
+} from 'lucide-react';
 import axios from 'axios';
 
-function App() {
+// ─── Markdown-like renderer ───────────────────────────────
+function renderMD(text) {
+  if (!text || typeof text !== 'string') return text;
+
+  const lines = text.split('\n');
+  const result = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Code block (triple backtick)
+    if (line.startsWith('```')) {
+      let codeLines = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      result.push(
+        <code key={`code-${i}`} className="msg-code">
+          {codeLines.join('\n')}
+        </code>
+      );
+      i++;
+      continue;
+    }
+
+    // Heading ## or ###
+    if (line.startsWith('### ')) {
+      result.push(
+        <p key={i} style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '6px', color: 'var(--gold-primary)' }}>
+          {inlineFormatLine(line.slice(4))}
+        </p>
+      );
+      i++; continue;
+    }
+    if (line.startsWith('## ')) {
+      result.push(
+        <p key={i} style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '8px', color: 'var(--gold-light)' }}>
+          {inlineFormatLine(line.slice(3))}
+        </p>
+      );
+      i++; continue;
+    }
+
+    // Bullet
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      result.push(
+        <p key={i} style={{ paddingLeft: '16px', position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 0, color: 'var(--gold-dim)' }}>•</span>
+          {inlineFormatLine(line.slice(2))}
+        </p>
+      );
+      i++; continue;
+    }
+
+    // Empty line → break
+    if (line.trim() === '') {
+      result.push(<span key={i} style={{ display: 'block', height: '8px' }} />);
+      i++; continue;
+    }
+
+    // Normal line
+    result.push(<p key={i}>{inlineFormatLine(line)}</p>);
+    i++;
+  }
+
+  return result;
+}
+
+function inlineFormatLine(text) {
+  // Bold: **text**
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((p, idx) => {
+    if (p.startsWith('**') && p.endsWith('**'))
+      return <strong key={idx}>{p.slice(2, -2)}</strong>;
+    if (p.startsWith('`') && p.endsWith('`'))
+      return <code key={idx} className="msg-inline-code">{p.slice(1, -1)}</code>;
+    return p;
+  });
+}
+
+// ─── Render message content (images, videos, markdown) ────
+function MessageContent({ content, apiBase }) {
+  // Detect video URL
+  const escapedBase = apiBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const videoRegex = new RegExp(`${escapedBase}/downloads/([^\\s]+)\\.mp4`, 'g');
+  const imgRegex = /(https:\/\/image\.pollinations\.ai\/prompt\/[^\s]+)/g;
+
+  let segments = [];
+  let lastIdx = 0;
+  let match;
+
+  while ((match = videoRegex.exec(content)) !== null) {
+    if (match.index > lastIdx) segments.push({ type: 'text', value: content.slice(lastIdx, match.index) });
+    segments.push({ type: 'video', url: match[0] });
+    lastIdx = match.index + match[0].length;
+  }
+
+  const rest = content.slice(lastIdx);
+  let imgLast = 0;
+  let im;
+  while ((im = imgRegex.exec(rest)) !== null) {
+    if (im.index > imgLast) segments.push({ type: 'text', value: rest.slice(imgLast, im.index) });
+    segments.push({ type: 'image', url: im[0] });
+    imgLast = im.index + im[0].length;
+  }
+  segments.push({ type: 'text', value: rest.slice(imgLast) });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {segments.map((seg, i) => {
+        if (seg.type === 'video') {
+          return (
+            <div key={i} className="media-block">
+              <video controls style={{ maxWidth: '100%', display: 'block' }}>
+                <source src={seg.url} type="video/mp4" />
+              </video>
+              <div className="media-block-action">
+                <a href={seg.url} download className="btn-link-gold">⬇ Baixar Vídeo</a>
+              </div>
+            </div>
+          );
+        }
+        if (seg.type === 'image') {
+          return (
+            <div key={i} className="media-block">
+              <img src={seg.url} alt="Imagem Gerada" />
+              <div className="media-block-action">
+                <a href={seg.url} target="_blank" rel="noreferrer" className="btn-link-gold">↗ Abrir Original</a>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {renderMD(seg.value)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Suggestions ──────────────────────────────────────────
+const SUGGESTIONS = [
+  { icon: '👑', text: 'Qual a sabedoria de Provérbios para hoje?' },
+  { icon: '🎨', text: 'Crie uma LUT cinematográfica para tons dourados' },
+  { icon: '💻', text: 'Construa um componente React moderno' },
+  { icon: '📖', text: 'Explique a história do Rei Salomão' },
+  { icon: '🖼', text: 'Gere uma imagem de um templo dourado majestoso' },
+  { icon: '⚡', text: 'Como posso otimizar meu workflow de vídeo?' },
+];
+
+// ─── Nav items ────────────────────────────────────────────
+const NAV_ITEMS = [
+  { id: 'chat', icon: MessageSquare, label: 'Chat Central' },
+  { id: 'lut', icon: Image, label: 'LUT Studio' },
+  { id: 'web', icon: Globe, label: 'Web Master' },
+  { id: 'atlas', icon: BookOpen, label: 'Atlas Sagrado' },
+  { id: 'settings', icon: Settings, label: 'Configurações' },
+];
+
+// ─── Default settings ─────────────────────────────────────
+const DEFAULT_SETTINGS = {
+  apiKey: '',
+  backendUrl: 'https://salomaoagent-production.up.railway.app',
+  showTimestamps: true,
+  autoScroll: true,
+  soundEnabled: false,
+};
+
+function loadSettings() {
+  try {
+    const s = localStorage.getItem('salomao_settings');
+    return s ? { ...DEFAULT_SETTINGS, ...JSON.parse(s) } : DEFAULT_SETTINGS;
+  } catch { return DEFAULT_SETTINGS; }
+}
+
+// ─── Format time ──────────────────────────────────────────
+function fmtTime(date) {
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ─── CopyButton ───────────────────────────────────────────
+function CopyBtn({ text }) {
+  const [copied, setCopied] = useState(false);
+  const handle = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button className="btn-copy" onClick={handle}>
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+      {copied ? 'Copiado' : 'Copiar'}
+    </button>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────
+export default function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('salomao_theme') || 'dark');
+  const [view, setView] = useState('chat');
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Eu sou Salomão. A graça e a paz do Senhor Jesus Cristo estejam com você. Em que posso auxiliá-lo como Engenheiro de Imagem, Web Master e Conselheiro Espiritual hoje?' }
+    {
+      role: 'assistant',
+      content: 'Eu sou Salomão. A graça e a paz do Senhor Jesus Cristo estejam com você. Sou seu Engenheiro de Imagem, Web Master e Conselheiro Espiritual. Em que posso auxiliá-lo hoje?',
+      time: new Date(),
+    }
   ]);
-  const [inputMessage, setInputMessage] = useState('');
+  const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [currentView, setCurrentView] = useState('chat');
-  const [placeholderText, setPlaceholderText] = useState('Digite sua pergunta...');
+  const [settings, setSettings] = useState(loadSettings);
+  const [toast, setToast] = useState(null);
   const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  const placeholders = [
-    '/CRIAR-LUT-64 imagem.jpg ou digite sua pergunta...',
-    'Como posso aplicar a sabedoria de Provérbios hoje?',
-    'Converta este pensamento em código...',
-    'Quais os princípios para um Web Design majestoso?',
-    'Pesquise as origens do hebraico antigo...',
-    'Quero gerar uma imagem de um leão dourado...'
-  ];
-
+  // Apply theme to <html>
   useEffect(() => {
-    // Pick a random placeholder on load
-    const randomIdx = Math.floor(Math.random() * placeholders.length);
-    setPlaceholderText(placeholders[randomIdx]);
-  }, []);
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('salomao_theme', theme);
+  }, [theme]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // Auto-scroll
+  useEffect(() => {
+    if (settings.autoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isLoading, settings.autoScroll]);
+
+  // Auto-resize textarea
+  const handleInputChange = (e) => {
+    setInput(e.target.value);
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    }
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading, currentView]);
+  const showToast = (msg, icon = '✓') => {
+    setToast({ msg, icon });
+    setTimeout(() => setToast(null), 3000);
+  };
 
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  // Send message
+  const handleSend = useCallback(async (text) => {
+    const content = (text || input).trim();
+    if (!content || isLoading) return;
 
-  const handleSendMessage = async (e) => {
-    if (e) e.preventDefault();
-    if (!inputMessage.trim()) return;
-
-    const userMessage = { role: 'user', content: inputMessage };
-    setMessages(prev => [...prev, userMessage]);
-    setInputMessage('');
+    const userMsg = { role: 'user', content, time: new Date() };
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setIsLoading(true);
 
+    const apiBase = settings.backendUrl || DEFAULT_SETTINGS.backendUrl;
+    const headers = {};
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+
     try {
-      const response = await axios.post(`${API_BASE_URL}/chat`, {
-        message: userMessage.content,
-        history: messages.map(msg => ({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: msg.content }))
-      });
+      const response = await axios.post(`${apiBase}/chat`, {
+        message: content,
+        history: messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
+      }, { headers });
 
-      const aiMessage = { role: 'assistant', content: response.data.response };
-      setMessages(prev => [...prev, aiMessage]);
-
-      // Update placeholder randomly after a message
-      const randomIdx = Math.floor(Math.random() * placeholders.length);
-      setPlaceholderText(placeholders[randomIdx]);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: response.data.response,
+        time: new Date(),
+      }]);
     } catch (error) {
-      console.error("Error connecting to backend:", error);
-      setMessages(prev => [...prev, { role: 'assistant', content: `❌ Erro de conexão com o servidor (${API_BASE_URL}). Por favor, verifique se a API local está rodando e acessível.` }]);
+      const errMsg = error.response?.data?.detail
+        || `❌ Erro de conexão com o servidor (${apiBase}). Verifique o backend nas configurações.`;
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: errMsg,
+        time: new Date(),
+      }]);
     } finally {
       setIsLoading(false);
     }
+  }, [input, isLoading, messages, settings]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
-  const renderMessageContent = (content) => {
-    // Basic detection for local video downloads dynamically matching the API_BASE_URL
-    const escapedBaseUrl = API_BASE_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const downloadRegex = new RegExp(`${escapedBaseUrl}/downloads/([^\\s]+)\\.mp4`, 'g');
-    // Detection for Pollinations images
-    const imgRegex = /(https:\/\/image\.pollinations\.ai\/prompt\/[^\s]+)/g;
-
-    let parts = [];
-    let lastIndex = 0;
-
-    // First handle video
-    let match;
-    while ((match = downloadRegex.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(content.slice(lastIndex, match.index));
-      }
-      parts.push(
-        <div key={`video-${match.index}`} style={{ marginTop: '10px' }}>
-          <video controls style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <source src={match[0]} type="video/mp4" />
-            Seu navegador não suporta o formato de vídeo.
-          </video>
-          <div style={{ marginTop: '8px' }}>
-            <a href={match[0]} download className="btn-primary" style={{ textDecoration: 'none', display: 'inline-block', fontSize: '14px', padding: '6px 12px' }}>Baixar Vídeo</a>
-          </div>
-        </div>
-      );
-      lastIndex = match.index + match[0].length;
-    }
-
-    // Now handle possible images on the remaining text
-    let remainingContent = content.slice(lastIndex);
-    let imgParts = [];
-    let imgLastIndex = 0;
-
-    let imgMatch;
-    while ((imgMatch = imgRegex.exec(remainingContent)) !== null) {
-      if (imgMatch.index > imgLastIndex) {
-        imgParts.push(remainingContent.slice(imgLastIndex, imgMatch.index));
-      }
-      imgParts.push(
-        <div key={`img-${imgMatch.index}`} style={{ marginTop: '10px' }}>
-          <img src={imgMatch[0]} alt="Imagem Gerada IA" style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }} />
-          <div style={{ marginTop: '8px' }}>
-            <a href={imgMatch[0]} target="_blank" rel="noreferrer" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-block', fontSize: '14px', padding: '6px 12px' }}>Abrir Imagem Original</a>
-          </div>
-        </div>
-      );
-      imgLastIndex = imgMatch.index + imgMatch[0].length;
-    }
-    imgParts.push(remainingContent.slice(imgLastIndex));
-
-    parts = parts.concat(imgParts);
-    return parts;
+  const handleNewChat = () => {
+    setMessages([{
+      role: 'assistant',
+      content: 'Nova conversa iniciada. Como posso servi-lo, nobre visitante?',
+      time: new Date(),
+    }]);
+    setView('chat');
   };
 
-  const renderContent = () => {
-    if (currentView === 'chat') {
-      return (
-        <div className="chat-container glass">
-          <div className="chat-messages">
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`message ${msg.role}`}>
-                <div className="avatar">
-                  {msg.role === 'assistant' ? <img src="/logo.png" alt="Salomão" style={{ width: '100%', height: '100%', borderRadius: '12px', objectFit: 'cover' }} /> : <span style={{ color: 'white', fontWeight: 'bold' }}>U</span>}
-                </div>
-                <div className="message-content" style={{ whiteSpace: 'pre-wrap' }}>
-                  {renderMessageContent(msg.content)}
-                </div>
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
+  // ─── Sidebar ──────────────────────────────────────────
+  const Sidebar = () => (
+    <aside className="sidebar">
+      {/* Logo */}
+      <div className="logo-area">
+        <div className="logo-img-wrap">
+          <div className="logo-ring" />
+          <img src="/logo.png" alt="Salomão" />
+        </div>
+        <div className="logo-text">
+          <div className="logo-title">SALOMÃO</div>
+          <div className="logo-subtitle">O Sábio · v6.8</div>
+        </div>
+      </div>
+
+      {/* New Chat */}
+      <button className="btn-new-chat" onClick={handleNewChat}>
+        <Plus size={15} />
+        Nova Conversa
+      </button>
+
+      {/* Navigation */}
+      <nav className="nav-section">
+        <div className="nav-section-label">Módulos</div>
+        {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
+          <button
+            key={id}
+            className={`nav-item ${view === id ? 'active' : ''}`}
+            onClick={() => setView(id)}
+          >
+            <span className="nav-icon"><Icon size={17} /></span>
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Bottom */}
+      <div className="sidebar-bottom">
+        <button className="theme-toggle" onClick={toggleTheme}>
+          <span className="theme-toggle-icon">
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </span>
+          {theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+        </button>
+      </div>
+    </aside>
+  );
+
+  // ─── Chat View ──────────────────────────────────────
+  const ChatView = () => {
+    const apiBase = settings.backendUrl || DEFAULT_SETTINGS.backendUrl;
+    const isEmpty = messages.length <= 1 && !isLoading;
+
+    return (
+      <div className="chat-view">
+        {/* Header */}
+        <div className="chat-header">
+          <div className="chat-header-icon">
+            <Crown size={18} />
+          </div>
+          <div className="chat-header-info">
+            <h2>SALOMÃO</h2>
+            <p>Engenheiro de Imagem · Web Master · Conselheiro Espiritual</p>
+          </div>
+        </div>
+
+        {/* Messages or Empty state */}
+        <div className="chat-messages">
+          {isEmpty ? (
+            <div className="empty-state">
+              <img src="/logo.png" alt="Salomão" className="empty-logo" />
+              <h1 className="empty-title">Como posso servi-lo?</h1>
+              <p className="empty-sub">
+                Sou Salomão, seu assistente de IA real. Domino artes de Engenharia de Imagem,
+                Web Design, código, sabedoria espiritual e muito mais.
+              </p>
+              <div className="suggestion-chips">
+                {SUGGESTIONS.map((s, i) => (
+                  <button key={i} className="chip" onClick={() => handleSend(s.text)}>
+                    {s.icon} {s.text}
+                  </button>
+                ))}
               </div>
-            ))}
-            {isLoading && (
-              <div className={`message assistant`}>
-                <div className="avatar">
-                  <img src="/logo.png" alt="Salomão" style={{ width: '100%', height: '100%', borderRadius: '12px', objectFit: 'cover' }} />
+            </div>
+          ) : (
+            <>
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`message ${msg.role}`}>
+                  <div className="avatar">
+                    {msg.role === 'assistant'
+                      ? <img src="/logo.png" alt="Salomão" />
+                      : <span className="user-avatar-initial">U</span>
+                    }
+                  </div>
+                  <div className="message-body">
+                    <div className="message-content">
+                      <MessageContent content={msg.content} apiBase={apiBase} />
+                    </div>
+                    <div className="message-meta">
+                      {settings.showTimestamps && msg.time && (
+                        <span className="message-time">{fmtTime(msg.time)}</span>
+                      )}
+                      <CopyBtn text={msg.content} />
+                    </div>
+                  </div>
                 </div>
-                <div className="message-content" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-secondary)', animation: 'fadeIn 1s infinite alternate' }}></div>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-secondary)', animation: 'fadeIn 1s infinite alternate 0.2s' }}></div>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-secondary)', animation: 'fadeIn 1s infinite alternate 0.4s' }}></div>
+              ))}
+
+              {isLoading && (
+                <div className="message assistant">
+                  <div className="avatar">
+                    <img src="/logo.png" alt="Salomão" />
+                  </div>
+                  <div className="message-body">
+                    <div className="message-content">
+                      <div className="typing-indicator">
+                        <div className="typing-dot" />
+                        <div className="typing-dot" />
+                        <div className="typing-dot" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+              )}
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </div>
+
+        {/* Input */}
+        <div className="input-area">
+          <div className="input-form">
+            <button className="input-btn input-btn-ghost" type="button" title="Anexar arquivo">
+              <Plus size={18} />
+            </button>
+            <textarea
+              ref={textareaRef}
+              className="input-textarea"
+              placeholder="Digite uma mensagem para Salomão... (Enter para enviar)"
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
+              rows={1}
+            />
+            <button
+              className="input-btn input-btn-send"
+              type="button"
+              onClick={() => handleSend()}
+              disabled={isLoading || !input.trim()}
+              title="Enviar"
+            >
+              <Send size={16} />
+            </button>
+          </div>
+          <div className="input-footer">
+            Salomão v6.8 — Groq + LangChain · Respostas geradas por IA
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ─── Settings View ─────────────────────────────────
+  const SettingsView = () => {
+    const [local, setLocal] = useState({ ...settings });
+    const [showKey, setShowKey] = useState(false);
+
+    const save = () => {
+      setSettings(local);
+      localStorage.setItem('salomao_settings', JSON.stringify(local));
+      showToast('Configurações salvas com sucesso!', '✓');
+    };
+
+    const toggle = (key) => setLocal(p => ({ ...p, [key]: !p[key] }));
+
+    return (
+      <div className="settings-view">
+        <div style={{ maxWidth: 680, margin: '0 auto' }}>
+          <div className="settings-header">
+            <h2>Configurações</h2>
+            <p>Personalize sua experiência com o Sábio Salomão</p>
           </div>
 
-          <div className="input-area">
-            <form className="input-box" onSubmit={handleSendMessage}>
-              <button type="button" className="btn-icon">
-                <Mic size={20} />
-              </button>
+          {/* API Settings */}
+          <div className="settings-section">
+            <div className="settings-section-title">
+              <Key size={16} /> Integração de API
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Chave API Pessoal (Groq)</label>
+              <div className="form-input-wrap">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="gsk_••••••••••••••••••••••••••••••••"
+                  value={local.apiKey}
+                  onChange={e => setLocal(p => ({ ...p, apiKey: e.target.value }))}
+                  style={{ paddingRight: 44 }}
+                />
+                <button className="input-eye-btn" onClick={() => setShowKey(s => !s)}>
+                  {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <p className="form-hint">
+                Sua chave Groq pessoal para uso ilimitado. Obtenha em{' '}
+                <a href="https://console.groq.com" target="_blank" rel="noreferrer"
+                  style={{ color: 'var(--gold-primary)' }}>console.groq.com</a>.
+                Se deixar vazio, será usada a chave padrão do servidor.
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">URL do Backend</label>
               <input
                 type="text"
-                placeholder={placeholderText}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                disabled={isLoading}
+                className="form-input"
+                placeholder="https://seu-backend.railway.app"
+                value={local.backendUrl}
+                onChange={e => setLocal(p => ({ ...p, backendUrl: e.target.value }))}
               />
-              <button type="submit" className="btn-primary" disabled={isLoading || !inputMessage.trim()}>
-                <Send size={18} />
-              </button>
-            </form>
-            <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              Salomão v6.8 — Respostas geradas por IA local Groq c/ LangChain
+              <p className="form-hint">
+                Endereço do servidor backend Python (FastAPI). Use a URL do Railway, Render, ou localhost:8000 para desenvolvimento local.
+              </p>
+            </div>
+
+            {/* Connection test indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 0' }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: local.backendUrl ? 'var(--gold-primary)' : '#555',
+                boxShadow: local.backendUrl ? '0 0 8px var(--gold-glow)' : 'none'
+              }} />
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                {local.backendUrl ? `Configurado: ${local.backendUrl}` : 'Nenhum backend configurado'}
+              </span>
             </div>
           </div>
-        </div>
-      );
-    }
 
-    if (currentView === 'lut') {
-      return (
-        <div className="chat-container glass" style={{ padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <Image size={64} color="var(--accent-color)" style={{ marginBottom: '20px' }} />
-          <h2>Engenharia LUT</h2>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginTop: '16px' }}>Solte imagens aqui para que Mestre Salomão gere Lookup Tables precisos (em breve).</p>
-        </div>
-      );
-    }
+          {/* Appearance */}
+          <div className="settings-section">
+            <div className="settings-section-title">
+              <Palette size={16} /> Aparência
+            </div>
+            <div className="theme-cards">
+              <div
+                className={`theme-card ${theme === 'dark' ? 'selected' : ''}`}
+                onClick={() => setTheme('dark')}
+              >
+                <div className="theme-card-preview dark-preview">
+                  <div className="preview-dot" style={{ background: '#C9A84C' }} />
+                  <div className="preview-dot" style={{ background: '#1C3D5E' }} />
+                  <div className="preview-dot" style={{ background: '#243B55' }} />
+                </div>
+                <div className="theme-card-name">⚫ Modo Escuro</div>
+              </div>
+              <div
+                className={`theme-card ${theme === 'light' ? 'selected' : ''}`}
+                onClick={() => setTheme('light')}
+              >
+                <div className="theme-card-preview light-preview">
+                  <div className="preview-dot" style={{ background: '#8A6420' }} />
+                  <div className="preview-dot" style={{ background: '#1C3D5E' }} />
+                  <div className="preview-dot" style={{ background: '#C9A84C' }} />
+                </div>
+                <div className="theme-card-name">⚪ Modo Claro</div>
+              </div>
+            </div>
+          </div>
 
-    if (currentView === 'web') {
-      return (
-        <div className="chat-container glass" style={{ padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <Terminal size={64} color="var(--accent-color)" style={{ marginBottom: '20px' }} />
-          <h2>Web Master</h2>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginTop: '16px' }}>Geração de código React e CSS com design moderno nível mundial (em breve).</p>
-        </div>
-      );
-    }
+          {/* Behavior */}
+          <div className="settings-section">
+            <div className="settings-section-title">
+              <Sliders size={16} /> Comportamento do Chat
+            </div>
 
-    if (currentView === 'atlas') {
-      return (
-        <div className="chat-container glass" style={{ padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <Database size={64} color="var(--accent-color)" style={{ marginBottom: '20px' }} />
-          <h2>Atlas MED/ESC</h2>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginTop: '16px' }}>Banco de dados teológico e sabedoria milenar de Salomão (em breve).</p>
+            <div className="toggle-row">
+              <div className="toggle-info">
+                <h4>Mostrar horário das mensagens</h4>
+                <p>Exibe o horário de envio abaixo de cada mensagem</p>
+              </div>
+              <label className="toggle-switch">
+                <input type="checkbox" checked={local.showTimestamps}
+                  onChange={() => toggle('showTimestamps')} />
+                <div className="toggle-track" />
+              </label>
+            </div>
+
+            <div className="toggle-row">
+              <div className="toggle-info">
+                <h4>Rolagem automática</h4>
+                <p>Rola para a última mensagem automaticamente</p>
+              </div>
+              <label className="toggle-switch">
+                <input type="checkbox" checked={local.autoScroll}
+                  onChange={() => toggle('autoScroll')} />
+                <div className="toggle-track" />
+              </label>
+            </div>
+
+            <div className="toggle-row">
+              <div className="toggle-info">
+                <h4>Sons de notificação</h4>
+                <p>Toca um som ao receber uma nova resposta</p>
+              </div>
+              <label className="toggle-switch">
+                <input type="checkbox" checked={local.soundEnabled}
+                  onChange={() => toggle('soundEnabled')} />
+                <div className="toggle-track" />
+              </label>
+            </div>
+          </div>
+
+          {/* Save */}
+          <button className="btn-save" onClick={save}>
+            <Check size={14} style={{ display: 'inline', marginRight: 8 }} />
+            Salvar Configurações
+          </button>
         </div>
-      );
+      </div>
+    );
+  };
+
+  // ─── Coming Soon View ───────────────────────────────
+  const ComingSoon = ({ title, desc, icon: Icon, color }) => (
+    <div className="coming-soon-view">
+      <div className="coming-soon-icon" style={{ '--icon-color': color }}>
+        <Icon size={36} color="var(--gold-primary)" />
+      </div>
+      <h2 className="coming-soon-title">{title}</h2>
+      <p className="coming-soon-desc">{desc}</p>
+      <span className="badge-soon">Em Breve</span>
+      <div style={{ marginTop: 12 }}>
+        <button className="chip" onClick={() => setView('chat')}>
+          💬 Usar o Chat enquanto isso
+        </button>
+      </div>
+    </div>
+  );
+
+  // ─── Main render ────────────────────────────────────
+  const renderView = () => {
+    switch (view) {
+      case 'chat':
+        return <ChatView />;
+      case 'lut':
+        return (
+          <ComingSoon
+            title="LUT Studio"
+            icon={Image}
+            desc="Gere e aplique Lookup Tables cinematográficas de alta precisão com IA. Transforme a paleta de cores das suas imagens com a sabedoria visual do Mestre Salomão."
+          />
+        );
+      case 'web':
+        return (
+          <ComingSoon
+            title="Web Master"
+            icon={Globe}
+            desc="Geração de código React, CSS e componentes de nível mundial diretamente do chat. Design moderno e majestoso entregue em segundos."
+          />
+        );
+      case 'atlas':
+        return (
+          <ComingSoon
+            title="Atlas Sagrado"
+            icon={BookOpen}
+            desc="Banco de dados teológico e sabedoria milenar de Salomão. Pesquise Provérbios, Eclesiastes, e toda a tradição de sabedoria do Oriente Antigo."
+          />
+        );
+      case 'settings':
+        return <SettingsView />;
+      default:
+        return <ChatView />;
     }
   };
 
   return (
     <div className="app-container">
-      {/* Sidebar */}
-      <aside className="sidebar glass">
-        <div className="logo-container">
-          <img src="/logo.png" alt="Salomão Logo" style={{ width: 48, height: 48, borderRadius: '12px', objectFit: 'cover' }} />
-          <div style={{ marginLeft: '12px' }}>
-            <h1 style={{ fontSize: '1.25rem', margin: 0, background: 'linear-gradient(45deg, #FFD700, #FDB931)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>SALOMÃO</h1>
-            <span className="version" style={{ color: '#FFD700', fontSize: '0.7rem' }}>O SÁBIO (v6.8)</span>
-          </div>
-        </div>
-
-        <nav className="nav-links">
-          <a href="#" className={`nav-link ${currentView === 'chat' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setCurrentView('chat'); }}><MessageSquare size={20} /> Chat Central</a>
-          <a href="#" className={`nav-link ${currentView === 'lut' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setCurrentView('lut'); }}><Image size={20} /> Engenharia LUT</a>
-          <a href="#" className={`nav-link ${currentView === 'web' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setCurrentView('web'); }}><Terminal size={20} /> Web Master</a>
-          <a href="#" className={`nav-link ${currentView === 'atlas' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setCurrentView('atlas'); }}><Database size={20} /> Atlas MED/ESC</a>
-        </nav>
-
-        <div style={{ marginTop: 'auto' }}>
-          <a href="#" className="nav-link"><Settings size={20} /> Configurações</a>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="main-content" style={{ flex: 1, display: 'flex' }}>
-        {renderContent()}
+      <Sidebar />
+      <main className="main-content">
+        {renderView()}
       </main>
+
+      {/* Toast */}
+      {toast && (
+        <div className="toast">
+          <Check size={16} />
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }
-
-export default App;

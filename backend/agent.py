@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from dotenv import load_dotenv
-from tools import download_youtube_audio, search_internet, convert_media, generate_image
+from tools import download_youtube_video, search_internet, convert_media, generate_image
 
 load_dotenv()
 
@@ -19,7 +19,7 @@ def read_system_prompt():
         return "You are Salomão, an intelligent AI agent."
 
 # Initialize tools
-tools = [download_youtube_audio, search_internet, convert_media, generate_image]
+tools = [download_youtube_video, search_internet, convert_media, generate_image]
 
 def get_salomao_response(current_message: str, history: list = None):
     """
@@ -32,7 +32,7 @@ def get_salomao_response(current_message: str, history: list = None):
     
     # Initialize the LLM
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile", 
+        model="llama-3.1-8b-instant", 
         temperature=0.7, 
         max_tokens=4096
     )
